@@ -2,8 +2,7 @@
 import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
-import pagarme from 'pagarme';
-import pagarmeJs from 'pagarme';
+import pagarme from '@pagarme/pagarme-js';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -35,9 +34,9 @@ app.post('/card_hash', async (req, res) => {
       return res.status(400).json({ error: 'Campos do cartão incompletos' });
     }
 
-    const clientJs = await pagarmeJs.client.connect({ api_key: PAGARME_API_KEY });
+    const client = await pagarme.client.connect({ api_key: PAGARME_API_KEY });
 
-    const card_hash = await clientJs.security.encrypt({
+    const card_hash = await client.security.encrypt({
       card_number,
       card_holder_name,
       card_expiration_date,
