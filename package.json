@@ -1,6 +1,7 @@
 {
   "name": "backend-doacoes-pagarme-rest",
   "version": "1.0.0",
+   "type": "module",
   "description": "Backend Node.js para doações usando API REST Pagar.me e axios",
   "main": "index.js",
   "scripts": {
