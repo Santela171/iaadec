@@ -2,22 +2,20 @@
 import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
-import pagarme from '@pagarme/pagarme-js';
+import axios from 'axios';
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 const PAGARME_API_KEY = 'sk_d78f3d78ea3d4d75a61e3f099ccd07c7';
 
-// Liberar CORS para seu frontend na Hostinger:
 const allowedOrigins = ['https://iaadec.shop'];
 
 app.use(cors({
   origin: function(origin, callback){
-    if(!origin) return callback(null, true); // Postman, etc
+    if(!origin) return callback(null, true);
     if(allowedOrigins.indexOf(origin) === -1){
-      const msg = 'O CORS não permite essa origem.';
-      return callback(new Error(msg), false);
+      return callback(new Error('CORS não permite essa origem.'), false);
     }
     return callback(null, true);
   }
@@ -25,7 +23,7 @@ app.use(cors({
 
 app.use(bodyParser.json());
 
-// Gera card_hash no backend (dados do cartão)
+// Gerar card_hash via API REST
 app.post('/card_hash', async (req, res) => {
   try {
     const { card_number, card_holder_name, card_expiration_date, card_cvv } = req.body;
@@ -34,23 +32,30 @@ app.post('/card_hash', async (req, res) => {
       return res.status(400).json({ error: 'Campos do cartão incompletos' });
     }
 
-    const client = await pagarme.client.connect({ api_key: PAGARME_API_KEY });
-
-    const card_hash = await client.security.encrypt({
+    const cardData = {
       card_number,
       card_holder_name,
       card_expiration_date,
-      card_cvv,
+      card_cvv
+    };
+
+    const response = await axios.post('https://api.pagar.me/core/v5/cards/hash', cardData, {
+      headers: {
+        Authorization: `Bearer ${PAGARME_API_KEY}`
+      }
     });
 
+    const card_hash = response.data.card_hash;
+
     return res.json({ card_hash });
+
   } catch (error) {
-    console.error('Erro ao gerar card_hash:', error);
+    console.error('Erro ao gerar card_hash:', error.response?.data || error.message);
     return res.status(500).json({ error: 'Erro ao gerar card_hash' });
   }
 });
 
-// Recebe dados e cria transação
+// Criar transação via API REST
 app.post('/doar', async (req, res) => {
   try {
     const {
@@ -67,8 +72,6 @@ app.post('/doar', async (req, res) => {
     }
 
     const amount = Math.round(parseFloat(valor) * 100);
-
-    const client = await pagarme.client.connect({ api_key: PAGARME_API_KEY });
 
     const transactionParams = {
       amount,
@@ -93,15 +96,22 @@ app.post('/doar', async (req, res) => {
       transactionParams.card_hash = card_hash;
     }
 
-    const transaction = await client.transactions.create(transactionParams);
+    const response = await axios.post('https://api.pagar.me/core/v5/transactions', transactionParams, {
+      headers: {
+        Authorization: `Bearer ${PAGARME_API_KEY}`
+      }
+    });
+
+    const transaction = response.data;
 
     return res.json({
       success: true,
       transaction_id: transaction.id,
       status: transaction.status,
     });
+
   } catch (error) {
-    console.error('Erro na doação:', error);
+    console.error('Erro na doação:', error.response?.data || error.message);
     return res.status(500).json({ error: 'Erro ao processar doação' });
   }
 });
