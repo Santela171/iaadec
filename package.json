@@ -1,13 +1,15 @@
 {
-  "name": "backend-pagarme",
+  "name": "backend-doacoes",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Backend para doações com Pagar.me v5",
+  "main": "server.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
     "express": "^4.18.2",
-    "pagarme": "^4.4.0",
-    "dotenv": "^16.3.1"
+    "pagarme": "^5.10.0"
   }
 }
