@@ -1,44 +1,62 @@
-
-import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import pagarme from 'pagarme';
-
-dotenv.config();
+require('dotenv').config();
+const express = require('express');
+const pagarme = require('pagarme');
 
 const app = express();
-app.use(cors());
 app.use(express.json());
-
-const PORT = process.env.PORT || 3000;
-const API_KEY = process.env.PAGARME_API_KEY;
 
 app.post('/pagar', async (req, res) => {
   try {
     const { card_hash, cpf } = req.body;
 
     if (!card_hash || !cpf) {
-      return res.status(400).json({ error: 'card_hash e cpf são obrigatórios' });
+      return res.status(400).json({ success: false, error: 'card_hash e cpf são obrigatórios' });
     }
 
-    const client = await pagarme.client.connect({ api_key: API_KEY });
+    const client = await pagarme.client.connect({ api_key: process.env.PAGARME_API_KEY });
 
     const transaction = await client.transactions.create({
-      amount: 1000, // R$10,00 em centavos
-      card_hash,
-      capture: true,
+      amount: 1000,
+      card_hash: card_hash,
       customer: {
-        document_number: cpf.replace(/\D/g, ''),
+        document_number: cpf,
+        type: 'individual',
       },
+      billing: {
+        name: 'Cliente Santela Burger',
+        document_number: cpf,
+        address: {
+          street: 'Rua Exemplo',
+          neighborhood: 'Bairro Exemplo',
+          zipcode: '12345000',
+          city: 'Cidade Exemplo',
+          state: 'SP',
+          country: 'br',
+          street_number: '100',
+        }
+      },
+      items: [
+        {
+          id: '1',
+          title: 'Doação - Santela Burger',
+          unit_price: 1000,
+          quantity: 1,
+          tangible: false,
+        }
+      ],
+      payment_method: 'credit_card',
     });
 
-    res.json({ success: true, transaction });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message || 'Erro interno' });
+    if (transaction.status === 'authorized' || transaction.status === 'paid') {
+      return res.json({ success: true, transaction });
+    } else {
+      return res.status(400).json({ success: false, error: 'Transação não autorizada', transaction });
+    }
+  } catch (err) {
+    console.error('Erro no /pagar:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Erro interno' });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
