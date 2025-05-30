@@ -1,15 +1,15 @@
 {
-  "name": "backend-doacoes",
+  "name": "backend-doacoes-pagarme-rest",
   "version": "1.0.0",
-  "description": "Backend para doações com Pagar.me v5 (pagarme-js oficial)",
+  "description": "Backend Node.js para doações usando API REST Pagar.me e axios",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
+    "axios": "^1.4.0",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "@pagarme/pagarme-js": "^5.11.0"
+    "express": "^4.18.2"
   }
 }
