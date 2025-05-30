@@ -1,63 +1,97 @@
 import express from 'express';
-import cors from 'cors';
-import pagarme from 'pagarme';
+import fetch from 'node-fetch';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 10000;
-const PAGARME_API_KEY = process.env.PAGARME_API_KEY || 'sk_d78f3d78ea3d4d75a61e3f099ccd07c7';
-
-app.use(cors());
 app.use(express.json());
 
-app.get('/', (req, res) => {
-  res.send('API backend doações funcionando');
-});
+const PORT = process.env.PORT || 10000;
+const API_KEY = process.env.PAGARME_API_KEY;
 
-// Rota para gerar card_hash (card_id na API pagar.me)
+if (!API_KEY) {
+  console.error('⚠️  PAGARME_API_KEY não definida no .env');
+  process.exit(1);
+}
+
+// Rota para gerar card_id via API Pagar.me
 app.post('/card_hash', async (req, res) => {
   try {
-    console.log('Recebido no /card_hash:', req.body);
+    const card = req.body;
 
-    const client = await pagarme.client.connect({ api_key: PAGARME_API_KEY });
-    const card = await client.cards.create(req.body);
+    if (!card.number || !card.holder_name || !card.expiration_date || !card.cvv) {
+      return res.status(400).json({ error: 'Dados do cartão incompletos' });
+    }
 
-    console.log('card_id gerado:', card.id);
+    const response = await fetch('https://api.pagar.me/core/v5/cards', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({ card }),
+    });
 
-    res.json({ card_id: card.id });
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Erro ao gerar card_id:', errorData);
+      return res.status(response.status).json({ error: errorData.message || 'Erro na API Pagar.me' });
+    }
+
+    const data = await response.json();
+    console.log('card_id gerado:', data.id);
+    res.json({ card_id: data.id });
   } catch (err) {
-    console.error('Erro ao gerar card_id:', err.response?.data || err.message || err);
-    res.status(500).json({ error: 'Erro ao gerar card_id' });
+    console.error('Erro interno no /card_hash:', err);
+    res.status(500).json({ error: 'Erro interno ao gerar card_id' });
   }
 });
 
-// Rota para processar doação
+// Rota para criar a transação (doação)
 app.post('/doar', async (req, res) => {
   try {
-    console.log('Recebido no /doar:', req.body);
-
     const { nome, email, cpf, valor, formaPagamento, card_id } = req.body;
 
-    const client = await pagarme.client.connect({ api_key: PAGARME_API_KEY });
+    if (!nome || !email || !cpf || !valor || !formaPagamento) {
+      return res.status(400).json({ error: 'Dados da doação incompletos' });
+    }
 
-    const transaction = await client.transactions.create({
-      amount: valor * 100, // valor em centavos
-      payment_method: formaPagamento,
-      card_id: card_id,
+    // Monta o corpo da requisição para a criação da transação
+    const transactionBody = {
+      amount: Math.round(parseFloat(valor) * 100), // valor em centavos
+      payment_method: formaPagamento, // ex: "credit_card"
+      card_id: card_id || undefined,
       customer: {
         name: nome,
-        email,
-        documents: [{ type: 'cpf', number: cpf }],
+        email: email,
+        document: cpf,
       },
-      // configure demais campos conforme necessidade
-      // e conforme documentação Pagar.me v5
+      // Pode ajustar outras opções aqui (como capture automatico)
+      capture: true,
+    };
+
+    const response = await fetch('https://api.pagar.me/core/v5/transactions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify(transactionBody),
     });
 
-    console.log('Transação realizada:', transaction.id);
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Erro ao criar transação:', errorData);
+      return res.status(response.status).json({ error: errorData.message || 'Erro na criação da transação' });
+    }
 
-    res.json({ success: true, transaction_id: transaction.id });
+    const data = await response.json();
+    console.log('Transação criada:', data.id);
+    res.json({ message: 'Doação realizada com sucesso!', transaction_id: data.id });
   } catch (err) {
-    console.error('Erro na doação:', err.response?.data || err.message || err);
-    res.status(500).json({ error: 'Erro ao processar doação' });
+    console.error('Erro interno no /doar:', err);
+    res.status(500).json({ error: 'Erro interno ao processar doação' });
   }
 });
 
