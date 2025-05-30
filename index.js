@@ -33,7 +33,7 @@ app.post('/card_hash', async (req, res) => {
     res.json({ card_id });
 
   } catch (err) {
-    console.error(err?.response?.data || err.message);
+    console.error('Erro ao gerar card_id:', err.response?.data || err.message); // ⬅ AQUI
     res.status(500).json({ error: 'Erro ao gerar card_id' });
   }
 });
