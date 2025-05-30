@@ -1,95 +1,62 @@
 import express from 'express';
-import axios from 'axios';
 import cors from 'cors';
+import pagarme from 'pagarme';
 
 const app = express();
+const PORT = process.env.PORT || 10000;
+const PAGARME_API_KEY = process.env.PAGARME_API_KEY || 'sk_d78f3d78ea3d4d75a61e3f099ccd07c7';
+
 app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 10000;
+app.get('/', (req, res) => {
+  res.send('API backend doações funcionando');
+});
 
-// CHAVE DE API REAL DA PAGAR.ME (v5)
-const PAGARME_API_KEY = 'sk_d78f3d78ea3d4d75a61e3f099ccd07c7';
-
+// Rota para gerar card_hash (card_id na API pagar.me)
 app.post('/card_hash', async (req, res) => {
   try {
-    const { card_number, card_holder_name, card_expiration_date, card_cvv } = req.body;
+    console.log('Recebido no /card_hash:', req.body);
 
-    const response = await axios.post(
-      'https://api.pagar.me/core/v5/cards',
-      {
-        number: card_number,
-        holder_name: card_holder_name,
-        exp_month: card_expiration_date.substring(0, 2),
-        exp_year: '20' + card_expiration_date.substring(2, 4),
-        cvv: card_cvv,
-      },
-      {
-        headers: {
-          Authorization: `Basic ${Buffer.from(PAGARME_API_KEY + ':').toString('base64')}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    const client = await pagarme.client.connect({ api_key: PAGARME_API_KEY });
+    const card = await client.cards.create(req.body);
 
-    res.json({ card_id: response.data.id });
-  } catch (error) {
-    console.error('Erro ao gerar card_id:', error.response?.data || error.message);
+    console.log('card_id gerado:', card.id);
+
+    res.json({ card_id: card.id });
+  } catch (err) {
+    console.error('Erro ao gerar card_id:', err.response?.data || err.message || err);
     res.status(500).json({ error: 'Erro ao gerar card_id' });
   }
 });
 
+// Rota para processar doação
 app.post('/doar', async (req, res) => {
   try {
+    console.log('Recebido no /doar:', req.body);
+
     const { nome, email, cpf, valor, formaPagamento, card_id } = req.body;
 
-    const customer = {
-      name: nome,
-      email,
-      type: 'individual',
-      documents: [{ type: 'cpf', number: cpf.replace(/\D/g, '') }],
-    };
+    const client = await pagarme.client.connect({ api_key: PAGARME_API_KEY });
 
-    const body = {
-      items: [
-        {
-          amount: Math.round(parseFloat(valor) * 100),
-          description: 'Doação',
-          quantity: 1,
-        },
-      ],
-      customer,
-    };
+    const transaction = await client.transactions.create({
+      amount: valor * 100, // valor em centavos
+      payment_method: formaPagamento,
+      card_id: card_id,
+      customer: {
+        name: nome,
+        email,
+        documents: [{ type: 'cpf', number: cpf }],
+      },
+      // configure demais campos conforme necessidade
+      // e conforme documentação Pagar.me v5
+    });
 
-    if (formaPagamento === 'credit_card') {
-      body.payments = [
-        {
-          payment_method: 'credit_card',
-          credit_card: { card_id },
-        },
-      ];
-    } else {
-      body.payments = [
-        {
-          payment_method: formaPagamento,
-        },
-      ];
-    }
+    console.log('Transação realizada:', transaction.id);
 
-    const response = await axios.post(
-      'https://api.pagar.me/core/v5/orders',
-      body,
-      {
-        headers: {
-          Authorization: `Basic ${Buffer.from(PAGARME_API_KEY + ':').toString('base64')}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    res.json({ sucesso: true, transacao: response.data });
-  } catch (error) {
-    console.error('Erro na doação:', error.response?.data || error.message);
+    res.json({ success: true, transaction_id: transaction.id });
+  } catch (err) {
+    console.error('Erro na doação:', err.response?.data || err.message || err);
     res.status(500).json({ error: 'Erro ao processar doação' });
   }
 });
